@@ -58,12 +58,12 @@ jobs:
           TAG_VERSION=${GITHUB_REF#refs/tags/v}
           echo "Tag version: $TAG_VERSION"
 
-         if [ "$PROJECT_VERSION" != "$TAG_VERSION" ]; then
-          echo "❌ ERROR: Version mismatch!"
-          echo "   Directory.Build.props: $PROJECT_VERSION"
-          echo "   Git tag: v$TAG_VERSION"
-          exit 1
-        fi
+          if [ "$PROJECT_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ ERROR: Version mismatch!"
+            echo "   Directory.Build.props: $PROJECT_VERSION"
+            echo "   Git tag: v$TAG_VERSION"
+            exit 1
+          fi
 
           echo "✅ Version validated: $PROJECT_VERSION"
           echo "version=$PROJECT_VERSION" >> $GITHUB_OUTPUT
