@@ -128,7 +128,7 @@ jobs:
       - name: Publish NuGet
         if: ${{ inputs.nuget-project-path != '' }}
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY_CV4PVE }}
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           for package in ./nuget-packages/*.nupkg; do
             dotnet nuget push $package \
