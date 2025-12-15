@@ -25,6 +25,12 @@ on:
         default: "10.0.x"
         type: string
 
+    secrets:
+        NUGET_API_KEY:
+          required: false
+        WINGET_TOKEN:
+          required: false
+
 env:
   DOTNET_VERSION: ${{ inputs.dotnet-version }}
 
