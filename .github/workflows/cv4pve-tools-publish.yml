@@ -24,6 +24,8 @@ on:
           required: false
         AUR_SSH_PRIVATE_KEY:
           required: false
+        HOMEBREW_TAP_TOKEN:
+          required: false
 
 env:
   DOTNET_VERSION: ${{ inputs.dotnet-version }}
