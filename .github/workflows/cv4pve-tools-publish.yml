@@ -142,11 +142,15 @@ jobs:
 
       - name: Build and publish NuGet
         run: |
-          if [ ! -f "packaging/nuget/project-path" ]; then
+          if [ ! -f "packaging/config" ]; then
             exit 0
           fi
 
-          NUGET_PROJECT=$(cat packaging/nuget/project-path | tr -d '[:space:]')
+          NUGET_PROJECT=$(grep '^nuget-project-path=' packaging/config | cut -d= -f2- | tr -d '[:space:]')
+          if [ -z "$NUGET_PROJECT" ]; then
+            exit 0
+          fi
+
           echo "✅ Publishing NuGet package: $NUGET_PROJECT"
 
           dotnet build $NUGET_PROJECT -c Release
@@ -166,16 +170,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check identifier exists
+      - name: Read packaging config
         id: check
         run: |
-          if [ -f "packaging/winget/identifier" ]; then
-            IDENTIFIER=$(cat packaging/winget/identifier | tr -d '[:space:]')
-            echo "skip=false" >> $GITHUB_OUTPUT
-            echo "identifier=$IDENTIFIER" >> $GITHUB_OUTPUT
-          else
+          if [ ! -f "packaging/config" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
           fi
+
+          WINGET_ID=$(grep '^winget-id=' packaging/config | cut -d= -f2-)
+          if [ -z "$WINGET_ID" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "skip=false" >> $GITHUB_OUTPUT
+          echo "identifier=$WINGET_ID" >> $GITHUB_OUTPUT
 
       - name: Publish to WinGet
         if: steps.check.outputs.skip == 'false'
@@ -194,16 +204,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check PKGBUILD exists
+      - name: Read packaging config
         id: check
         run: |
-          if [ -f "packaging/aur/PKGBUILD" ]; then
-            PKGNAME=$(grep -oP '^pkgname=\K.+' packaging/aur/PKGBUILD)
-            echo "skip=false" >> $GITHUB_OUTPUT
-            echo "pkgname=$PKGNAME" >> $GITHUB_OUTPUT
-          else
+          if [ ! -f "packaging/config" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
           fi
+
+          DESCRIPTION=$(grep '^description=' packaging/config | cut -d= -f2-)
+          LICENSE_SPDX=$(grep '^license=' packaging/config | cut -d= -f2-)
+
+          if [ -z "$DESCRIPTION" ] || [ -z "$LICENSE_SPDX" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # mapping SPDX → AUR format
+          LICENSE_AUR=$(echo "$LICENSE_SPDX" | sed 's/GPL-3.0-only/GPLv3/;s/GPL-3.0/GPLv3/')
+
+          echo "skip=false" >> $GITHUB_OUTPUT
+          echo "pkgname=${{ inputs.project-name }}" >> $GITHUB_OUTPUT
+          echo "description=$DESCRIPTION" >> $GITHUB_OUTPUT
+          echo "license=$LICENSE_AUR" >> $GITHUB_OUTPUT
 
       - name: Get version and sha256sums
         if: steps.check.outputs.skip == 'false'
@@ -230,13 +253,43 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Update PKGBUILD
+      - name: Generate PKGBUILD
         if: steps.check.outputs.skip == 'false'
         run: |
-          sed -i "s/^pkgver=.*/pkgver=${{ steps.info.outputs.version }}/" packaging/aur/PKGBUILD
-          sed -i "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('${{ steps.info.outputs.sha_x64 }}')/" packaging/aur/PKGBUILD
-          sed -i "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('${{ steps.info.outputs.sha_arm64 }}')/" packaging/aur/PKGBUILD
-          sed -i "s/^sha256sums_armv7h=.*/sha256sums_armv7h=('${{ steps.info.outputs.sha_arm }}')/" packaging/aur/PKGBUILD
+          echo "✅ Generating PKGBUILD for ${{ steps.check.outputs.pkgname }}"
+          PKGNAME="${{ steps.check.outputs.pkgname }}"
+          VERSION="${{ steps.info.outputs.version }}"
+          mkdir -p packaging/aur
+          cat > packaging/aur/PKGBUILD << EOF
+          # Maintainer: Corsinvest Srl <corsinvest@corsinvest.it>
+          # Project : https://github.com/${{ github.repository }}
+          # Part of : CV4PVE Suite - https://www.corsinvest.it/cv4pve
+
+          pkgname=${PKGNAME}
+          pkgver=${VERSION}
+          pkgrel=1
+          pkgdesc="${{ steps.check.outputs.description }}"
+          arch=('x86_64' 'aarch64' 'armv7h')
+          url="https://github.com/${{ github.repository }}"
+          license=('${{ steps.check.outputs.license }}')
+          depends=()
+          provides=('${PKGNAME}')
+          conflicts=('${PKGNAME}')
+          options=('!strip' '!debug')
+
+          source_x86_64=("\${pkgname}-\${pkgver}-x86_64.zip::https://github.com/${{ github.repository }}/releases/download/v\${pkgver}/${PKGNAME}-linux-x64.zip")
+          source_aarch64=("\${pkgname}-\${pkgver}-aarch64.zip::https://github.com/${{ github.repository }}/releases/download/v\${pkgver}/${PKGNAME}-linux-arm64.zip")
+          source_armv7h=("\${pkgname}-\${pkgver}-armv7h.zip::https://github.com/${{ github.repository }}/releases/download/v\${pkgver}/${PKGNAME}-linux-arm.zip")
+
+          sha256sums_x86_64=('${{ steps.info.outputs.sha_x64 }}')
+          sha256sums_aarch64=('${{ steps.info.outputs.sha_arm64 }}')
+          sha256sums_armv7h=('${{ steps.info.outputs.sha_arm }}')
+
+          package() {
+              install -Dm755 "\${srcdir}/\${pkgname}" "\${pkgdir}/usr/bin/\${pkgname}"
+              install -Dm644 /dev/null "\${pkgdir}/usr/share/licenses/\${pkgname}/LICENSE"
+          }
+          EOF
 
       - name: Publish to AUR
         if: steps.check.outputs.skip == 'false'
@@ -257,14 +310,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check control exists
+      - name: Read packaging config
         id: check
         run: |
-          if [ -f "packaging/deb/control" ]; then
-            echo "skip=false" >> $GITHUB_OUTPUT
-          else
+          if [ ! -f "packaging/config" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
           fi
+
+          DESCRIPTION=$(grep '^description=' packaging/config | cut -d= -f2-)
+          LONG_DESCRIPTION=$(grep '^long-description=' packaging/config | cut -d= -f2-)
+
+          if [ -z "$DESCRIPTION" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "skip=false" >> $GITHUB_OUTPUT
+          echo "description=$DESCRIPTION" >> $GITHUB_OUTPUT
+          echo "long_description=$LONG_DESCRIPTION" >> $GITHUB_OUTPUT
 
       - name: Get version
         if: steps.check.outputs.skip == 'false'
@@ -315,10 +379,15 @@ jobs:
             cp "${EXTRACT_DIR}/${PKGNAME}" "${INSTALL_DIR}/${PKGNAME}"
             chmod 755 "${INSTALL_DIR}/${PKGNAME}"
 
-            sed \
-              -e "s/^Version: .*/Version: ${VERSION}/" \
-              -e "s/^Architecture: .*/Architecture: ${arch}/" \
-              packaging/deb/control > "${DEBIAN_DIR}/control"
+            cat > "${DEBIAN_DIR}/control" << EOF
+          Package: ${PKGNAME}
+          Version: ${VERSION}
+          Architecture: ${arch}
+          Maintainer: Corsinvest Srl <corsinvest@corsinvest.it>
+          Homepage: https://github.com/${{ github.repository }}
+          Description: ${{ steps.check.outputs.description }}
+           ${{ steps.check.outputs.long_description }}
+          EOF
 
             dpkg-deb --build "$DEB_DIR" "./${PKGNAME}-${VERSION}-${arch}.deb"
             echo "✅ Built ${PKGNAME}-${VERSION}-${arch}.deb"
@@ -341,14 +410,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check spec exists
+      - name: Read packaging config
         id: check
         run: |
-          if [ -f "packaging/rpm/spec" ]; then
-            echo "skip=false" >> $GITHUB_OUTPUT
-          else
+          if [ ! -f "packaging/config" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
           fi
+
+          DESCRIPTION=$(grep '^description=' packaging/config | cut -d= -f2-)
+          LONG_DESCRIPTION=$(grep '^long-description=' packaging/config | cut -d= -f2-)
+          LICENSE_SPDX=$(grep '^license=' packaging/config | cut -d= -f2-)
+
+          if [ -z "$DESCRIPTION" ] || [ -z "$LICENSE_SPDX" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # mapping SPDX → RPM format
+          LICENSE_RPM=$(echo "$LICENSE_SPDX" | sed 's/GPL-3.0-only/GPLv3/;s/GPL-3.0/GPLv3/')
+
+          echo "skip=false" >> $GITHUB_OUTPUT
+          echo "description=$DESCRIPTION" >> $GITHUB_OUTPUT
+          echo "long_description=$LONG_DESCRIPTION" >> $GITHUB_OUTPUT
+          echo "license=$LICENSE_RPM" >> $GITHUB_OUTPUT
 
       - name: Get version
         if: steps.check.outputs.skip == 'false'
@@ -381,6 +466,7 @@ jobs:
           echo "✅ Building rpm packages"
           VERSION="${{ steps.info.outputs.version }}"
           PKGNAME="${{ inputs.project-name }}"
+
           declare -a rpm_platforms=(
             "${PKGNAME}-linux-x64.zip|x86_64"
             "${PKGNAME}-linux-arm64.zip|aarch64"
@@ -388,6 +474,31 @@ jobs:
           )
 
           mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+
+          cat > ~/rpmbuild/SPECS/${PKGNAME}.spec << EOF
+          Name: ${PKGNAME}
+          Version: ${VERSION}
+          Release: 1
+          Summary: ${{ steps.check.outputs.description }}
+          License: ${{ steps.check.outputs.license }}
+          URL: https://github.com/${{ github.repository }}
+
+          %description
+          ${{ steps.check.outputs.long_description }}
+
+          %define __strip /bin/true
+          %define __os_install_post %{nil}
+
+          %prep
+
+          %build
+
+          %install
+          install -Dm755 %{_sourcedir}/%{name} %{buildroot}/usr/bin/%{name}
+
+          %files
+          /usr/bin/%{name}
+          EOF
 
           for entry in "${rpm_platforms[@]}"; do
             IFS='|' read -r zipfile arch <<< "$entry"
@@ -399,8 +510,6 @@ jobs:
             unzip -q "./release-assets/${zipfile}" -d "$EXTRACT_DIR"
             cp "${EXTRACT_DIR}/${PKGNAME}" ~/rpmbuild/SOURCES/${PKGNAME}
             chmod 755 ~/rpmbuild/SOURCES/${PKGNAME}
-
-            sed "s/^Version: .*/Version: ${VERSION}/" packaging/rpm/spec > ~/rpmbuild/SPECS/${PKGNAME}.spec
 
             rpmbuild -bb ~/rpmbuild/SPECS/${PKGNAME}.spec \
               --target "$arch" \
@@ -427,16 +536,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check identifier exists
+      - name: Read packaging config
         id: check
         run: |
-          if [ -f "packaging/pkg/identifier" ]; then
-            IDENTIFIER=$(cat packaging/pkg/identifier | tr -d '[:space:]')
-            echo "skip=false" >> $GITHUB_OUTPUT
-            echo "identifier=$IDENTIFIER" >> $GITHUB_OUTPUT
-          else
+          if [ ! -f "packaging/config" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
           fi
+
+          PKG_IDENTIFIER=$(grep '^pkg-identifier=' packaging/config | cut -d= -f2-)
+          if [ -z "$PKG_IDENTIFIER" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "skip=false" >> $GITHUB_OUTPUT
+          echo "identifier=$PKG_IDENTIFIER" >> $GITHUB_OUTPUT
 
       - name: Get version
         if: steps.check.outputs.skip == 'false'
@@ -511,22 +626,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check homebrew config exists
+      - name: Read packaging config
         id: check
         run: |
-          if [ -f "packaging/homebrew/tap" ]; then
-            FORMULA_CLASS=$(grep '^formula-class=' packaging/homebrew/tap | cut -d= -f2-)
-            DESCRIPTION=$(grep '^description=' packaging/homebrew/tap | cut -d= -f2-)
-            TAP=$(grep '^tap=' packaging/homebrew/tap | cut -d= -f2-)
-            LICENSE=$(grep '^license=' packaging/homebrew/tap | cut -d= -f2-)
-            echo "skip=false" >> $GITHUB_OUTPUT
-            echo "formula_class=$FORMULA_CLASS" >> $GITHUB_OUTPUT
-            echo "description=$DESCRIPTION" >> $GITHUB_OUTPUT
-            echo "tap_repo=$TAP" >> $GITHUB_OUTPUT
-            echo "license=$LICENSE" >> $GITHUB_OUTPUT
-          else
+          if [ ! -f "packaging/config" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
           fi
+
+          FORMULA_CLASS=$(grep '^homebrew-formula-class=' packaging/config | cut -d= -f2-)
+          DESCRIPTION=$(grep '^description=' packaging/config | cut -d= -f2-)
+          LICENSE_SPDX=$(grep '^license=' packaging/config | cut -d= -f2-)
+
+          if [ -z "$FORMULA_CLASS" ] || [ -z "$DESCRIPTION" ] || [ -z "$LICENSE_SPDX" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # mapping SPDX → Homebrew format (strip -only)
+          LICENSE_HB=$(echo "$LICENSE_SPDX" | sed 's/-only//')
+
+          echo "skip=false" >> $GITHUB_OUTPUT
+          echo "formula_class=$FORMULA_CLASS" >> $GITHUB_OUTPUT
+          echo "description=$DESCRIPTION" >> $GITHUB_OUTPUT
+          echo "license=$LICENSE_HB" >> $GITHUB_OUTPUT
 
       - name: Get version
         if: steps.check.outputs.skip == 'false'
@@ -556,13 +679,14 @@ jobs:
       - name: Create Homebrew formula
         if: steps.check.outputs.skip == 'false'
         run: |
+          echo "✅ Creating Homebrew formula for ${{ inputs.project-name }}"
           PKGNAME="${{ inputs.project-name }}"
           cat > "${PKGNAME}.rb" << EOF
           class ${{ steps.check.outputs.formula_class }} < Formula
             desc "${{ steps.check.outputs.description }}"
             homepage "https://github.com/${{ github.repository }}"
             version "${{ steps.version.outputs.VERSION }}"
-            license "GPL-3.0"
+            license "${{ steps.check.outputs.license }}"
 
             on_macos do
               on_intel do
@@ -589,8 +713,7 @@ jobs:
         if: steps.check.outputs.skip == 'false'
         run: |
           PKGNAME="${{ inputs.project-name }}"
-          TAP_REPO="${{ steps.check.outputs.tap_repo }}"
-          git clone "https://x-access-token:${{ secrets.HOMEBREW_TAP_TOKEN }}@github.com/${TAP_REPO}.git" homebrew-tap
+          git clone "https://x-access-token:${{ secrets.HOMEBREW_TAP_TOKEN }}@github.com/Corsinvest/homebrew-tap.git" homebrew-tap
           cd homebrew-tap
           mkdir -p Formula
           mv "../${PKGNAME}.rb" Formula/
@@ -599,3 +722,4 @@ jobs:
           git add "Formula/${PKGNAME}.rb"
           git commit -m "Update ${PKGNAME} to ${{ steps.version.outputs.VERSION }}"
           git push
+          echo "✅ Pushed ${PKGNAME} formula to Corsinvest/homebrew-tap"
