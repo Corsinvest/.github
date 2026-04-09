@@ -212,10 +212,11 @@ jobs:
             exit 0
           fi
 
+          TYPE=$(grep '^type=' packaging/config | cut -d= -f2-)
           DESCRIPTION=$(grep '^description=' packaging/config | cut -d= -f2-)
           LICENSE_SPDX=$(grep '^license=' packaging/config | cut -d= -f2-)
 
-          if [ -z "$DESCRIPTION" ] || [ -z "$LICENSE_SPDX" ]; then
+          if [ "$TYPE" != "cli" ] || [ -z "$DESCRIPTION" ] || [ -z "$LICENSE_SPDX" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -318,10 +319,11 @@ jobs:
             exit 0
           fi
 
+          TYPE=$(grep '^type=' packaging/config | cut -d= -f2-)
           DESCRIPTION=$(grep '^description=' packaging/config | cut -d= -f2-)
           LONG_DESCRIPTION=$(grep '^long-description=' packaging/config | cut -d= -f2-)
 
-          if [ -z "$DESCRIPTION" ]; then
+          if [ "$TYPE" != "cli" ] || [ -z "$DESCRIPTION" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -418,11 +420,12 @@ jobs:
             exit 0
           fi
 
+          TYPE=$(grep '^type=' packaging/config | cut -d= -f2-)
           DESCRIPTION=$(grep '^description=' packaging/config | cut -d= -f2-)
           LONG_DESCRIPTION=$(grep '^long-description=' packaging/config | cut -d= -f2-)
           LICENSE_SPDX=$(grep '^license=' packaging/config | cut -d= -f2-)
 
-          if [ -z "$DESCRIPTION" ] || [ -z "$LICENSE_SPDX" ]; then
+          if [ "$TYPE" != "cli" ] || [ -z "$DESCRIPTION" ] || [ -z "$LICENSE_SPDX" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
             exit 0
           fi
