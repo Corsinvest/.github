@@ -1,0 +1,52 @@
+name: CV4PVE Tools Docs
+
+on:
+  workflow_call:
+    inputs:
+      path:
+        description: "Folder of the Astro docs site"
+        required: false
+        default: "docs"
+        type: string
+      pre-build:
+        description: "Optional shell command run before the Astro build (e.g. to generate reference pages)"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pre-build
+        if: ${{ inputs.pre-build != '' }}
+        env:
+          PRE_BUILD: ${{ inputs.pre-build }}
+        run: bash -c "$PRE_BUILD"
+
+      - name: Build site
+        uses: withastro/action@v6
+        with:
+          path: ${{ inputs.path }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
