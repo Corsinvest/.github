@@ -44,7 +44,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      packages: write
 
     steps:
       - name: Checkout
@@ -142,7 +141,7 @@ jobs:
           done
 
       - name: Create GitHub Release and upload assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           name: Release v${{ steps.version.outputs.version }}
           draft: false
@@ -178,7 +177,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Publish to WinGet
-        uses: vedantmgoyal9/winget-releaser@v2
+        uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
         with:
           identifier: ${{ inputs.winget-id }}
           installers-regex: '${{ inputs.project-name }}\.exe-win-(x64|x86|arm64)\.zip$'
