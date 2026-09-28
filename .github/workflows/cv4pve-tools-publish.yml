@@ -165,6 +165,8 @@ jobs:
   winget:
     needs: publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -199,6 +201,8 @@ jobs:
   aur:
     needs: publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -306,6 +310,8 @@ jobs:
   deb:
     needs: publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -407,6 +413,8 @@ jobs:
   rpm:
     needs: publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -534,6 +542,8 @@ jobs:
   pkg-macos:
     needs: publish
     runs-on: macos-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -624,6 +634,8 @@ jobs:
   homebrew:
     needs: publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
