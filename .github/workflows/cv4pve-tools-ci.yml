@@ -9,7 +9,7 @@ on:
         default: "10.0.x"
         type: string
       build:
-        description: "Run the build + test job (quality jobs always run)"
+        description: "Deprecated, ignored: build, analysis and tests now run in one job"
         required: false
         default: true
         type: boolean
@@ -19,42 +19,7 @@ env:
 
 jobs:
   build:
-    name: Build
-    if: ${{ inputs.build }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-      - name: Test
-        run: dotnet test --no-build --configuration Release --verbosity normal
-
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts
-          path: src/**/bin/Release/
-          retention-days: 7
-
-  analyze:
-    name: Analyze
+    name: Build & Analyze
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -68,6 +33,7 @@ jobs:
         with:
           fetch-depth: 0
 
+      # CodeQL traces the build below: one compile serves both the analysis and the tests.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
@@ -86,6 +52,16 @@ jobs:
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
+
+      - name: Test
+        run: dotnet test --no-build --configuration Release --verbosity normal
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: src/**/bin/Release/
+          retention-days: 7
 
   lint:
     name: Lint
