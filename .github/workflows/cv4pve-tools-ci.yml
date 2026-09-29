@@ -18,7 +18,9 @@ env:
   DOTNET_VERSION: ${{ inputs.dotnet-version }}
 
 jobs:
-  build:
+  # Job id stays "analyze": CodeQL names its configuration after it (ci.yml:analyze), and a new
+  # id would orphan the alerts recorded under the old one.
+  analyze:
     name: Build & Analyze
     runs-on: ubuntu-latest
     timeout-minutes: 30
